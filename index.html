@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Control de comprobantes recibidos · Comandarina</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@300;400;600;700;800;900&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+:root{
+  --bg-1:#FFFFFF; --bg-3:#F1F1F1; --surface:#FFFFFF; --fg-1:#1F1F1F; --fg-2:#3B3B3B; --fg-3:#6A6A6A;
+  --border-1:#E2E2E2; --border-2:#C6C6C6; --brand:#FF5023; --brand-hover:#E84920; --brand-press:#D03F00; --brand-soft:#FFEEE9; --panel-bg:#F8F8F8;
+  --accent:#3937FF; --accent-soft:#EEEEFF;
+  --err:#93000F; --err-soft:#FFECEC; --warn:#755F00; --warn-soft:#FFEFCC; --ok:#3D741C; --ok-soft:#F1FBEB;
+  --shadow-m:0 2px 5px -2px rgba(10,10,10,.05),0 4px 10px -2px rgba(10,10,10,.10);
+  color-scheme:light;
+  box-sizing:border-box; padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg-1:#232323; --bg-3:#2C2C2C; --surface:#2C2C2C; --fg-1:#FFFFFF; --fg-2:#E2E2E2; --fg-3:#ABABAB;
+    --border-1:#3A3A3A; --border-2:#474747; --brand-soft:#3A2019; --accent:#9998FF; --accent-soft:#25244A;
+    --err:#FF888B; --err-soft:#3D1416; --warn:#EAC300; --warn-soft:#3A3008; --ok:#9FE176; --ok-soft:#1F3312;
+    --shadow-m:0 2px 5px -2px rgba(0,0,0,.4),0 4px 10px -2px rgba(0,0,0,.4);
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg-1:#232323; --bg-3:#2C2C2C; --surface:#2C2C2C; --fg-1:#FFFFFF; --fg-2:#E2E2E2; --fg-3:#ABABAB;
+  --border-1:#3A3A3A; --border-2:#474747; --brand-soft:#3A2019; --accent:#9998FF; --accent-soft:#25244A;
+  --err:#FF888B; --err-soft:#3D1416; --warn:#EAC300; --warn-soft:#3A3008; --ok:#9FE176; --ok-soft:#1F3312;
+  --shadow-m:0 2px 5px -2px rgba(0,0,0,.4),0 4px 10px -2px rgba(0,0,0,.4);
+  color-scheme:dark;
+}
+*,*::before,*::after{box-sizing:border-box}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg-1);color:var(--fg-1);font-family:"Barlow",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:16px;line-height:1.5;font-variant-numeric:tabular-nums}
+main{max-width:1280px;margin:0 auto;padding:32px 24px 80px}
+.logo{display:block;height:28px;width:auto;color:var(--brand);margin-bottom:40px}
+header h1{font-size:2.5rem;line-height:1.1;margin:0 0 8px;font-weight:900;letter-spacing:-.01em}
+header p{margin:0;color:var(--fg-2);max-width:64ch;font-size:1.0625rem}
+.empresa{margin:0 0 12px;font-weight:700;color:var(--fg-1);font-size:1.0625rem}
+.empresa span{color:var(--fg-3);font-weight:400;margin-left:8px}
+.slots{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin:40px 0 24px}
+@media (max-width:760px){.slots{grid-template-columns:1fr} header h1{font-size:2rem}}
+.slot{position:relative;background:var(--surface);border:1.5px dashed var(--border-2);border-radius:16px;padding:24px;cursor:pointer;transition:border-color 180ms ease-out}
+.slot:hover,.slot.drag{border-color:var(--brand)}
+.slot:focus-within{outline:2px solid var(--brand);outline-offset:2px}
+.slot.loaded{border-style:solid;border-color:var(--brand);box-shadow:var(--shadow-m)}
+.slot input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%}
+.slot h2{margin:0 0 4px;font-size:1.25rem;font-weight:700}
+.slot .hint{color:var(--fg-3);font-size:.9375rem;margin:0}
+.slot .file{display:inline-block;margin-top:12px;font-size:.875rem;font-weight:600;color:var(--fg-1);background:var(--brand-soft);padding:4px 12px;border-radius:999px;word-break:break-all}
+.slot .file:empty{display:none}
+.actions{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+button{font:inherit;font-weight:700;border-radius:999px;border:1.5px solid transparent;padding:12px 28px;cursor:pointer;font-size:1.1875rem;line-height:1.2;transition:background-color 180ms ease-out}
+button:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+.primary{background:var(--brand);color:#FFFFFF}
+.primary:hover:not(:disabled){background:var(--brand-hover)}
+.primary:active:not(:disabled){background:var(--brand-press)}
+.primary:disabled{opacity:.4;cursor:not-allowed}
+.secondary{background:transparent;color:var(--fg-1);border-color:var(--fg-1)}
+.secondary:hover{background:var(--bg-3)}
+.msg{margin:20px 0 0;padding:12px 16px;border-radius:8px;font-size:.9375rem}
+.msg.err{background:var(--err-soft);color:var(--err)}
+.msg.warn{background:var(--warn-soft);color:var(--warn)}
+.msg:empty{display:none}
+#results{margin-top:56px}
+.res-head{margin-bottom:20px;display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap}
+.res-head h2{margin:0;font-size:1.75rem;font-weight:800}
+.res-head p{margin:4px 0 0;color:var(--fg-3);font-size:.9375rem}
+.tabs{display:flex;gap:8px;overflow-x:auto;padding-bottom:0}
+.tab{flex:0 0 auto;text-align:left;background:transparent;border:1px solid var(--border-1);border-bottom:none;border-radius:12px 12px 0 0;padding:12px 18px 14px;color:var(--fg-3);font-weight:600;font-size:.9375rem}
+.tab:hover{background:var(--surface)}
+.tab b{display:block;font-size:1.75rem;line-height:1.1;color:var(--fg-1);font-weight:900}
+.tab[aria-selected="true"]{background:var(--surface);color:var(--fg-1);box-shadow:inset 0 3px 0 var(--brand)}
+.tab.t-bad b{color:var(--err)} .tab.t-warn b{color:var(--warn)} .tab.t-ok b{color:var(--ok)}
+.panel{background:var(--surface);border:1px solid var(--border-1);border-radius:0 16px 16px 16px;padding:24px;box-shadow:var(--shadow-m)}
+.panel-top{display:flex;justify-content:space-between;gap:16px;align-items:center;flex-wrap:wrap;margin-bottom:16px}
+.panel-top p{margin:0;color:var(--fg-2);max-width:72ch}
+.search{font:inherit;font-size:.9375rem;padding:9px 14px;border:1px solid var(--border-2);border-radius:8px;background:var(--surface);color:var(--fg-1);min-width:240px}
+.search:focus{outline:none;border-color:var(--brand);box-shadow:0 0 0 3px var(--brand-soft)}
+.tablewrap{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:.9375rem}
+th{text-align:left;font-weight:600;color:var(--fg-3);border-bottom:1px solid var(--border-2);padding:8px 12px;white-space:nowrap;background:var(--surface);font-size:.875rem}
+td{border-bottom:1px solid var(--border-1);padding:10px 12px;vertical-align:top;white-space:nowrap}
+td.w{white-space:normal;min-width:180px}
+td.n{text-align:right;white-space:nowrap}
+tr:last-child td{border-bottom:none}
+.obs{color:var(--warn);font-size:.875rem}
+.badge{display:inline-block;font-size:.8125rem;font-weight:600;padding:2px 10px;border-radius:999px;background:var(--ok-soft);color:var(--ok);white-space:nowrap}
+.badge.w{background:var(--warn-soft);color:var(--warn)}
+.empty{padding:32px 8px;text-align:center;color:var(--fg-3)}
+.hidden{display:none}
+@media (prefers-reduced-motion: reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<main>
+<header>
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 224 57" fill="currentColor" role="img" aria-label="Fudo" class="logo">
+  <path d="M 206.969 2.551 C 196.025 -2.209 183.6 -0.198 175.314 7.666 C 171.607 11.184 168.473 15.68 165.448 21.812 C 162.909 16.471 159.963 11.51 155.408 7.48 C 147.234 0.249 135.21 0.249 124.599 0.249 L 103.189 0.249 C 97.96 0.249 93.709 4.533 93.709 9.797 L 93.709 31.306 C 93.709 44.544 86.988 51.535 74.272 51.535 C 61.745 51.535 55.126 44.667 55.126 31.667 L 55.126 9.794 C 55.126 4.527 50.872 0.246 45.646 0.246 L 9.48 0.246 C 4.254 0.246 0 4.527 0 9.794 L 0 19.183 C 0 22.399 0.881 25.412 2.417 27.987 C 0.884 30.55 0 33.543 0 36.745 L 0 53.724 C 0 55.224 1.214 56.45 2.71 56.45 C 4.205 56.45 5.419 55.224 5.419 53.724 L 5.419 36.745 C 5.419 35.233 5.709 33.784 6.238 32.461 L 6.247 32.458 C 6.938 30.731 8.029 29.213 9.408 28.019 C 9.406 28.013 9.403 28.013 9.403 28.013 C 11.407 26.271 14.015 25.22 16.861 25.22 L 28.606 25.22 C 30.164 25.22 31.433 26.495 31.433 28.064 C 31.433 29.634 30.164 30.908 28.606 30.908 L 17.054 30.908 C 15.425 30.908 13.875 30.565 12.468 29.952 C 10.901 30.986 9.707 32.552 9.153 34.391 C 11.518 35.646 14.202 36.367 17.054 36.367 L 28.606 36.367 C 33.15 36.367 36.846 32.641 36.846 28.064 C 36.846 23.488 33.15 19.764 28.606 19.764 L 16.861 19.764 C 12.846 19.764 9.153 21.185 6.255 23.553 C 5.718 22.202 5.422 20.732 5.422 19.191 L 5.422 9.803 C 5.422 7.546 7.242 5.71 9.482 5.71 L 45.646 5.71 C 47.887 5.71 49.706 7.546 49.706 9.803 L 49.706 31.676 C 49.706 47.769 58.66 57 74.272 57 C 90.064 57 99.126 47.637 99.126 31.312 L 99.126 9.803 C 99.126 7.546 100.951 5.71 103.191 5.71 L 113.606 5.71 C 113.615 5.71 113.624 5.707 113.624 5.707 L 124.601 5.707 C 134.724 5.707 145.195 5.707 151.837 11.584 C 156.506 15.712 159.275 21.239 162.053 27.4 L 166.042 35.938 C 168.886 41.48 171.851 46.048 175.317 49.333 C 180.617 54.365 187.609 57 194.828 57 C 198.894 57 203.031 56.167 206.972 54.448 C 217.475 49.88 224 39.75 224 28.666 L 224 27.93 C 223.997 16.843 217.472 7.119 206.969 2.551 Z M 218.584 28.663 C 218.584 37.67 213.44 45.693 204.825 49.436 C 195.869 53.334 185.741 51.733 179.031 45.36 C 175.789 42.284 173.003 37.848 170.259 32.263 C 169.622 30.974 169.005 29.628 168.402 28.293 C 169.005 26.959 169.625 25.618 170.259 24.327 C 173.003 18.745 175.786 14.712 179.031 11.639 C 185.741 5.266 195.869 3.665 204.825 7.563 C 213.44 11.307 218.584 18.922 218.584 27.927 L 218.584 28.663 Z M 162.332 36.098 L 160.507 32.498 C 158.184 37.378 155.625 41.838 151.82 45.249 C 145.406 50.994 136.927 50.994 127.109 50.994 L 121.317 50.994 C 119.739 50.994 118.457 49.699 118.457 48.113 L 118.457 13.87 C 118.457 12.364 117.246 11.141 115.75 11.141 C 114.255 11.141 113.043 12.364 113.043 13.87 L 113.043 48.11 C 113.043 52.707 116.757 56.447 121.317 56.447 L 127.109 56.447 C 137.575 56.447 147.467 56.447 155.423 49.321 C 158.877 46.228 161.408 42.476 163.546 38.507 C 163.151 37.759 162.758 36.992 162.369 36.195 C 162.357 36.17 162.343 36.127 162.332 36.098 Z" fill="currentColor" role="img" aria-label="Fudo" class="logo" fill-rule="nonzero"></path>
+</svg>
+  <div class="empresa">Comandarina S.R.L. <span>CUIT 30-71773923-6</span></div>
+  <h1>Control de comprobantes recibidos</h1>
+  <p>Cruza “Mis Comprobantes Recibidos” de ARCA contra las facturas de proveedor de Odoo para encontrar lo que falta cargar.</p>
+</header>
+
+<section class="slots">
+  <label class="slot" id="slotA">
+    <input type="file" id="fileA" accept=".xlsx,.xls,.csv">
+    <h2>ARCA: Mis Comprobantes Recibidos</h2>
+    <p class="hint">El Excel tal como lo descargás del portal.</p>
+    <div class="file" id="nameA"></div>
+  </label>
+  <label class="slot" id="slotO">
+    <input type="file" id="fileO" accept=".xlsx,.xls,.csv">
+    <h2>Odoo: facturas de proveedor</h2>
+    <p class="hint">Export de account.move con CUIT, tipo de documento y moneda, incluyendo notas de crédito.</p>
+    <div class="file" id="nameO"></div>
+  </label>
+</section>
+<div class="actions">
+  <button class="primary" id="run" disabled>Cruzar comprobantes</button>
+</div>
+<div class="msg err" id="err" role="alert"></div>
+<div class="msg warn" id="warn"></div>
+
+<section id="results" class="hidden">
+  <div class="res-head">
+    <div><h2>Resultado</h2><p id="periodo"></p></div>
+    <button class="primary" id="dl">Descargar resultados en Excel</button>
+  </div>
+  <div class="tabs" role="tablist" id="tabs"></div>
+  <div class="panel">
+    <div class="panel-top"><p id="desc"></p><input class="search" id="q" type="search" placeholder="Buscar proveedor, CUIT o número" aria-label="Buscar"></div>
+    <div class="tablewrap"><table id="tbl"></table></div>
+  </div>
+</section>
+</main>
+<script>
+// ===== Lógica del cruce ARCA vs Odoo — Comandarina S.R.L. =====
+const CUIT_EMPRESA = '30717739236';
+const NO_APLICA = {
+  '99': 'Exceptuado de la RG 1415 (bancos, gastos, etc.)',
+  '39': 'Otros comprobantes RG 1415 (constancias de crédito fiscal)',
+  '66': 'Despacho de importación',
+  '81': 'Tique factura (controlador fiscal)', '82': 'Tique factura (controlador fiscal)',
+  '83': 'Tique (controlador fiscal)', '111': 'Tique factura (controlador fiscal)',
+  '112': 'Tique (controlador fiscal)', '113': 'Tique (controlador fiscal)',
+  '115': 'Tique (controlador fiscal)', '116': 'Tique (controlador fiscal)',
+  '118': 'Tique factura (controlador fiscal)', '119': 'Tique (controlador fiscal)',
+  '120': 'Tique (controlador fiscal)'
+};
+const MESES_DIF_MAX = 45; // días para el match probable
+
+const norm = s => String(s ?? '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim();
+const digits = v => {
+  if (v === null || v === undefined || v === '') return '';
+  if (typeof v === 'number') return String(Math.round(v));
+  return String(v).replace(/\D/g, '');
+};
+const num = v => {
+  if (typeof v === 'number') return v;
+  if (v === null || v === undefined || v === '') return 0;
+  let s = String(v).trim().replace(/[^\d,.\-]/g, '');
+  if (s.includes(',') && s.includes('.')) s = s.lastIndexOf(',') > s.lastIndexOf('.') ? s.replace(/\./g, '').replace(',', '.') : s.replace(/,/g, '');
+  else if (s.includes(',')) s = s.replace(',', '.');
+  const n = parseFloat(s); return isNaN(n) ? 0 : n;
+};
+const pad = (n, l) => String(n).padStart(l, '0');
+function toISO(v, SSF) {
+  if (v === null || v === undefined || v === '') return '';
+  if (typeof v === 'number' && SSF) { const d = SSF.parse_date_code(v); return d ? `${d.y}-${pad(d.m, 2)}-${pad(d.d, 2)}` : ''; }
+  if (v instanceof Date) return `${v.getFullYear()}-${pad(v.getMonth() + 1, 2)}-${pad(v.getDate(), 2)}`;
+  const s = String(v).trim();
+  let m = s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})/); if (m) return `${m[3]}-${pad(m[2], 2)}-${pad(m[1], 2)}`;
+  m = s.match(/^(\d{4})-(\d{2})-(\d{2})/); if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+  return '';
+}
+const dayNum = iso => iso ? Math.round(Date.UTC(+iso.slice(0, 4), +iso.slice(5, 7) - 1, +iso.slice(8, 10)) / 864e5) : NaN;
+const fmtFecha = iso => iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}` : '';
+const monedaARCA = s => { const t = String(s ?? '').trim().toUpperCase(); if (t === '$' || t === 'PES' || t === 'ARS') return 'ARS'; if (t === 'USD' || t === 'DOL' || t === 'U$S') return 'USD'; if (t === 'EUR' || t === '060') return 'EUR'; return t || 'ARS'; };
+const monedaOdoo = s => { const t = norm(s); if (!t) return ''; if (/peso|^ars$/.test(t)) return 'ARS'; if (/dollar|dolar|^usd$/.test(t)) return 'USD'; if (/euro|^eur$/.test(t)) return 'EUR'; return String(s).trim().toUpperCase(); };
+const tol = mon => mon === 'ARS' ? 1 : 0.05;
+const comp = (pv, nro) => (pv === null || nro === null) ? '' : `${pad(pv, 5)}-${pad(nro, 8)}`;
+
+function findHeader(rows, must) {
+  for (let i = 0; i < Math.min(rows.length, 30); i++) {
+    const cells = (rows[i] || []).map(norm);
+    if (must.every(m => cells.includes(m))) return i;
+  }
+  return -1;
+}
+function colIndex(header, ...names) {
+  const h = header.map(norm);
+  for (const n of names) { const i = h.indexOf(norm(n)); if (i >= 0) return i; }
+  for (const n of names) { const i = h.findIndex(x => x.startsWith(norm(n))); if (i >= 0) return i; }
+  return -1;
+}
+
+function parseARCA(rows, SSF) {
+  const hi = findHeader(rows, ['fecha', 'tipo', 'punto de venta']);
+  if (hi < 0) throw new Error('No encontré los encabezados de "Mis Comprobantes Recibidos" (Fecha, Tipo, Punto de Venta). ¿Es el export de ARCA?');
+  const H = rows[hi];
+  const c = {
+    fecha: colIndex(H, 'Fecha'), tipo: colIndex(H, 'Tipo'), pv: colIndex(H, 'Punto de Venta'),
+    desde: colIndex(H, 'Número Desde', 'Numero Desde'), hasta: colIndex(H, 'Número Hasta', 'Numero Hasta'),
+    cae: colIndex(H, 'Cód. Autorización', 'Cod. Autorizacion'), cuit: colIndex(H, 'Nro. Doc. Emisor'),
+    emisor: colIndex(H, 'Denominación Emisor', 'Denominacion Emisor'), receptor: colIndex(H, 'Nro. Doc. Receptor'),
+    tc: colIndex(H, 'Tipo Cambio'), moneda: colIndex(H, 'Moneda'), neto: colIndex(H, 'Neto Gravado Total', 'Imp. Neto Gravado'),
+    iva: colIndex(H, 'Total IVA', 'IVA'), total: colIndex(H, 'Imp. Total')
+  };
+  if (c.total < 0 || c.desde < 0 || c.cuit < 0) throw new Error('Al archivo de ARCA le faltan columnas clave (Número Desde, Nro. Doc. Emisor o Imp. Total).');
+  const titulo = (rows.slice(0, hi).flat().join(' ').match(/CUIT\s*(\d{11})/) || [])[1] || '';
+  const out = []; const receptores = new Set(titulo ? [titulo] : []);
+  for (let i = hi + 1; i < rows.length; i++) {
+    const r = rows[i]; if (!r || r.every(x => x === null || x === undefined || x === '')) continue;
+    const tipo = String(r[c.tipo] ?? '').trim(); const code = (tipo.match(/^(\d+)/) || [])[1];
+    if (!code) continue;
+    if (c.receptor >= 0 && r[c.receptor] != null && r[c.receptor] !== '') receptores.add(digits(r[c.receptor]));
+    out.push({
+      id: 'A' + i, fecha: toISO(r[c.fecha], SSF), tipo, code, pv: parseInt(num(r[c.pv])), nro: parseInt(num(r[c.desde])),
+      hasta: c.hasta >= 0 ? parseInt(num(r[c.hasta])) : null, cae: c.cae >= 0 ? digits(r[c.cae]) : '',
+      cuit: digits(r[c.cuit]), emisor: String(r[c.emisor] ?? '').trim(), moneda: monedaARCA(c.moneda >= 0 ? r[c.moneda] : ''),
+      tc: c.tc >= 0 ? num(r[c.tc]) : 1, neto: c.neto >= 0 ? num(r[c.neto]) : 0, iva: c.iva >= 0 ? num(r[c.iva]) : 0, total: num(r[c.total])
+    });
+  }
+  return { rows: out, receptores: [...receptores] };
+}
+
+function parseOdoo(rows, SSF) {
+  const hi = findHeader(rows, ['numero']);
+  if (hi < 0) throw new Error('No encontré la columna "Número" en el export de Odoo.');
+  const H = rows[hi];
+  const c = {
+    numero: colIndex(H, 'Número', 'Numero'), tipoDoc: colIndex(H, 'Tipo de Documento'),
+    cuit: colIndex(H, 'Contacto/Número de Identificación', 'Contacto/Numero de Identificacion', 'Contacto/NIF', 'Contacto/CUIT'),
+    nombre: colIndex(H, 'Nombre del contacto a mostrar en la factura', 'Contacto', 'Proveedor'),
+    fecha: colIndex(H, 'Fecha de la factura', 'Fecha de factura'), moneda: colIndex(H, 'Moneda/Nombre', 'Moneda'),
+    total: colIndex(H, 'Total'), neto: colIndex(H, 'Importe sin impuestos en la moneda firmada', 'Importe sin impuestos'),
+    estado: colIndex(H, 'Estado'), estadoPago: colIndex(H, 'Estado en pago', 'Estado de pago'), ref: colIndex(H, 'Referencia')
+  };
+  const faltan = [];
+  if (c.tipoDoc < 0) faltan.push('Tipo de Documento'); if (c.cuit < 0) faltan.push('Contacto/Número de Identificación');
+  if (c.total < 0) faltan.push('Total'); if (c.fecha < 0) faltan.push('Fecha de la factura');
+  if (c.total < 0 || c.fecha < 0) throw new Error('Al export de Odoo le faltan columnas obligatorias: ' + faltan.join(', ') + '.');
+  const out = [];
+  for (let i = hi + 1; i < rows.length; i++) {
+    const r = rows[i]; if (!r) continue;
+    const numero = String(r[c.numero] ?? '').trim(); if (!numero) continue;
+    const fecha = toISO(r[c.fecha], SSF);
+    if (!fecha && /^\(\d+\)|\(\d+\)\s*$/.test(numero)) continue; // fila de subtotal de agrupación
+    if (!fecha) continue;
+    const tipoDoc = c.tipoDoc >= 0 ? String(r[c.tipoDoc] ?? '').trim() : '';
+    const code = (tipoDoc.match(/^\((\d+)\)/) || [])[1] || null;
+    const m = numero.match(/(\d+)-(\d+)\s*$/);
+    out.push({
+      id: 'O' + i, numero, tipoDoc, code, pv: m ? parseInt(m[1], 10) : null, nro: m ? parseInt(m[2], 10) : null,
+      cuit: c.cuit >= 0 ? digits(r[c.cuit]) : '', nombre: c.nombre >= 0 ? String(r[c.nombre] ?? '').trim() : '', fecha,
+      moneda: c.moneda >= 0 ? monedaOdoo(r[c.moneda]) : '', total: Math.abs(num(r[c.total])), neto: c.neto >= 0 ? Math.abs(num(r[c.neto])) : 0,
+      estado: c.estado >= 0 ? String(r[c.estado] ?? '').trim() : '', estadoPago: c.estadoPago >= 0 ? String(r[c.estadoPago] ?? '').trim() : '',
+      ref: c.ref >= 0 ? String(r[c.ref] ?? '').trim() : ''
+    });
+  }
+  return { rows: out, faltanColumnas: faltan };
+}
+
+function cruzar(A, O) {
+  const avisos = [];
+  const usadoA = new Set(); const matches = [];
+  const keyFull = x => `${x.cuit}|${x.code}|${x.pv}|${x.nro}`;
+  const keyNoCuit = x => `${x.code}|${x.pv}|${x.nro}`;
+  const idxFull = new Map(), idxNoCuit = new Map();
+  for (const a of A) {
+    idxFull.set(keyFull(a), [...(idxFull.get(keyFull(a)) || []), a]);
+    idxNoCuit.set(keyNoCuit(a), [...(idxNoCuit.get(keyNoCuit(a)) || []), a]);
+  }
+  // duplicados en Odoo
+  const vistos = new Map(); const duplicados = new Set();
+  for (const o of O) {
+    if (o.code && o.pv !== null) { const k = `${o.cuit || o.nombre}|${keyNoCuit(o)}`; if (vistos.has(k)) { duplicados.add(o.id); duplicados.add(vistos.get(k)); } else vistos.set(k, o.id); }
+  }
+  const take = (list) => (list || []).find(a => !usadoA.has(a.id));
+  const restoO = [];
+  // Nivel 1: CUIT + tipo + PV + número
+  for (const o of O) {
+    const a = (o.code && o.pv !== null && o.cuit) ? take(idxFull.get(keyFull(o))) : null;
+    if (a) { usadoA.add(a.id); matches.push({ a, o, nivel: 'Exacto', obs: [] }); } else restoO.push(o);
+  }
+  // Nivel 2: tipo + PV + número (sin CUIT)
+  const resto2 = [];
+  for (const o of restoO) {
+    const cands = (o.code && o.pv !== null) ? (idxNoCuit.get(keyNoCuit(o)) || []).filter(a => !usadoA.has(a.id)) : [];
+    if (cands.length === 1) {
+      const a = cands[0]; usadoA.add(a.id);
+      const obs = [o.cuit ? `CUIT distinto: Odoo ${o.cuit} / ARCA ${a.cuit}` : 'El contacto no tiene CUIT cargado en Odoo'];
+      matches.push({ a, o, nivel: 'Sin CUIT', obs });
+    } else resto2.push(o);
+  }
+  // Nivel 3: CUIT + importe + moneda, fecha cercana (número cargado distinto)
+  const resto3 = [];
+  for (const o of resto2) {
+    if (!o.cuit || NO_APLICA[o.code] || !o.code) { resto3.push(o); continue; }
+    const cands = A.filter(a => !usadoA.has(a.id) && a.cuit === o.cuit && Math.abs(a.total - o.total) <= tol(a.moneda) && (!o.moneda || a.moneda === o.moneda) && Math.abs(dayNum(a.fecha) - dayNum(o.fecha)) <= MESES_DIF_MAX)
+      .sort((x, y) => Math.abs(dayNum(x.fecha) - dayNum(o.fecha)) - Math.abs(dayNum(y.fecha) - dayNum(o.fecha)));
+    if (cands.length) {
+      const a = cands[0]; usadoA.add(a.id);
+      matches.push({ a, o, nivel: 'Probable', obs: [`Match por CUIT + importe: en ARCA es ${a.tipo} ${comp(a.pv, a.nro)}, en Odoo ${o.numero}`] });
+    } else resto3.push(o);
+  }
+  // observaciones de los conciliados
+  for (const m of matches) {
+    const { a, o } = m;
+    const est = norm(o.estado), ep = norm(o.estadoPago);
+    if (est && est !== 'registrado' && est !== 'publicado') m.obs.push(`Estado en Odoo: ${o.estado}`);
+    if (ep === 'revertido') m.obs.push('Revertida en Odoo pero vigente en ARCA');
+    if (o.moneda && o.moneda !== a.moneda) m.obs.push(`Moneda distinta: Odoo ${o.moneda} / ARCA ${a.moneda}`);
+    if (a.fecha.slice(0, 7) !== o.fecha.slice(0, 7)) m.obs.push(`Período distinto: ARCA ${fmtFecha(a.fecha)} / Odoo ${fmtFecha(o.fecha)}`);
+    if (duplicados.has(o.id)) m.obs.push('Comprobante duplicado en Odoo');
+    m.dif = +(o.total - a.total).toFixed(2);
+    m.difImporte = (!o.moneda || o.moneda === a.moneda) && Math.abs(m.dif) > tol(a.moneda);
+  }
+  const fechasA = A.map(a => a.fecha).filter(Boolean).sort();
+  const minA = fechasA[0], maxA = fechasA[fechasA.length - 1];
+  const faltantes = A.filter(a => !usadoA.has(a.id)).map(a => {
+    const obs = [];
+    if (a.code === '3' || a.code === '8' || a.code === '13') obs.push('Nota de crédito: revisar si se cargó como reembolso');
+    if (a.total < 1) obs.push('Importe menor a 1');
+    if (a.hasta && a.hasta !== a.nro) obs.push(`Rango de números ${a.nro} a ${a.hasta}`);
+    return { a, obs };
+  });
+  const noAplica = [], revisar = [];
+  for (const o of resto3) {
+    const motivo = !o.code ? (o.tipoDoc ? `${o.tipoDoc} (sin código ARCA)` : 'Sin tipo de documento') : NO_APLICA[o.code];
+    if (motivo) { noAplica.push({ o, motivo }); continue; }
+    const obs = [];
+    if (maxA && o.fecha > maxA) obs.push(`Posterior al último día del export de ARCA (${fmtFecha(maxA)})`);
+    if (minA && o.fecha < minA) obs.push(`Anterior al primer día del export de ARCA (${fmtFecha(minA)})`);
+    if (o.code === '6' || o.code === '7' || o.code === '8') obs.push('Comprobante B: verificar a qué CUIT se emitió');
+    if (!o.cuit) obs.push('El contacto no tiene CUIT cargado');
+    if (o.pv === null) obs.push('El número no tiene formato PV-Número');
+    if (norm(o.estado) === 'borrador') obs.push('En borrador');
+    if (duplicados.has(o.id)) obs.push('Comprobante duplicado en Odoo');
+    revisar.push({ o, obs });
+  }
+  // resumen por proveedor
+  const prov = new Map();
+  const P = (cuit, nombre) => { const k = cuit || ('sin-cuit:' + nombre); if (!prov.has(k)) prov.set(k, { cuit, nombre, nA: 0, nO: 0, nConc: 0, nFalt: 0, totFalt: {}, nRev: 0, nDif: 0 }); const p = prov.get(k); if (!p.nombre && nombre) p.nombre = nombre; return p; };
+  for (const a of A) P(a.cuit, a.emisor).nA++;
+  for (const o of O) if (!(noAplica.find(x => x.o === o))) P(o.cuit, o.nombre).nO++;
+  for (const m of matches) { const p = P(m.a.cuit, m.a.emisor); p.nConc++; if (m.difImporte) p.nDif++; }
+  for (const f of faltantes) { const p = P(f.a.cuit, f.a.emisor); p.nFalt++; p.totFalt[f.a.moneda] = (p.totFalt[f.a.moneda] || 0) + f.a.total; }
+  for (const r of revisar) P(r.o.cuit, r.o.nombre).nRev++;
+  const proveedores = [...prov.values()].filter(p => p.nA || p.nO).sort((x, y) => (y.nFalt + y.nRev + y.nDif) - (x.nFalt + x.nRev + x.nDif) || x.nombre.localeCompare(y.nombre));
+  return { matches, faltantes, revisar, noAplica, proveedores, minA, maxA, avisos };
+}
+
+
+// ===== Interfaz =====
+const $ = id => document.getElementById(id);
+const files = { A: null, O: null };
+let R = null, tabActual = 'faltantes';
+const fmt = (n, mon) => (mon && mon !== 'ARS' ? mon + ' ' : '$ ') + Number(n || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const fmtCuit = c => c && c.length === 11 ? `${c.slice(0, 2)}-${c.slice(2, 10)}-${c.slice(10)}` : (c || '');
+const esc = s => String(s ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+
+function bindSlot(key) {
+  const input = $('file' + key), slot = $('slot' + key);
+  input.addEventListener('change', () => { if (input.files[0]) setFile(key, input.files[0]); });
+  ['dragenter', 'dragover'].forEach(e => slot.addEventListener(e, ev => { ev.preventDefault(); slot.classList.add('drag'); }));
+  ['dragleave', 'drop'].forEach(e => slot.addEventListener(e, ev => { ev.preventDefault(); slot.classList.remove('drag'); }));
+  slot.addEventListener('drop', ev => { const f = ev.dataTransfer.files[0]; if (f) setFile(key, f); });
+}
+function setFile(key, f) {
+  files[key] = f; $('name' + key).textContent = f.name; $('slot' + key).classList.add('loaded');
+  $('run').disabled = !(files.A && files.O);
+}
+bindSlot('A'); bindSlot('O');
+
+const leer = f => new Promise((res, rej) => {
+  const r = new FileReader();
+  r.onload = () => { try { const wb = XLSX.read(r.result, { type: 'array' }); res(XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: true, defval: null })); } catch (e) { rej(new Error('No pude leer ' + f.name + '.')); } };
+  r.onerror = () => rej(new Error('No pude leer ' + f.name + '.'));
+  r.readAsArrayBuffer(f);
+});
+
+$('run').addEventListener('click', async () => {
+  $('err').textContent = ''; $('warn').textContent = '';
+  try {
+    const [ra, ro] = await Promise.all([leer(files.A), leer(files.O)]);
+    let A, O;
+    try { A = parseARCA(ra, XLSX.SSF); } catch (e) {
+      try { parseARCA(ro, XLSX.SSF); throw new Error('Parece que cargaste los archivos al revés: el de ARCA va a la izquierda.'); } catch (e2) { throw e2.message.includes('al revés') ? e2 : e; }
+    }
+    O = parseOdoo(ro, XLSX.SSF);
+    const avisos = [];
+    const otros = A.receptores.filter(c => c && c !== CUIT_EMPRESA);
+    if (otros.length) avisos.push(`El archivo de ARCA es del CUIT ${otros.map(fmtCuit).join(', ')}, no de Comandarina (${fmtCuit(CUIT_EMPRESA)}). Revisá que sea el export correcto.`);
+    if (O.faltanColumnas.length) avisos.push('Al export de Odoo le faltan columnas: ' + O.faltanColumnas.join(', ') + '. El cruce va a ser menos preciso.');
+    if (!O.rows.some(o => /nota.*cr[eé]dito/i.test(o.tipoDoc))) avisos.push('El export de Odoo no trae notas de crédito: las NC de ARCA van a aparecer como faltantes.');
+    $('warn').textContent = avisos.join(' ');
+    R = cruzar(A.rows, O.rows); R.nA = A.rows.length; R.nO = O.rows.length;
+    render();
+  } catch (e) { $('err').textContent = e.message; $('results').classList.add('hidden'); }
+});
+
+const TABS = [
+  { id: 'faltantes', label: 'Faltan en Odoo', cls: 't-bad', desc: 'Están en ARCA y no se encontraron en Odoo. Son los que hay que cargar.' },
+  { id: 'diferencias', label: 'Diferencias de importe', cls: 't-bad', desc: 'El comprobante está en los dos lados, pero el total no coincide.' },
+  { id: 'revisar', label: 'En Odoo, no en ARCA', cls: 't-warn', desc: 'Cargados en Odoo con un tipo que debería figurar en ARCA y que no aparecen en el export.' },
+  { id: 'observaciones', label: 'Conciliados con observaciones', cls: 't-warn', desc: 'Coinciden, pero hay algo para corregir: contacto sin CUIT, estado, período o número distinto.' },
+  { id: 'proveedores', label: 'Por proveedor', cls: '', desc: 'Cantidades por proveedor. Arriba los que tienen pendientes.' },
+  { id: 'noaplica', label: 'No informados en ARCA', cls: '', desc: 'Comprobantes que no suelen aparecer en Mis Comprobantes: constancias, bancos, tiques y del exterior.' },
+  { id: 'conciliados', label: 'Conciliados', cls: 't-ok', desc: 'Todos los comprobantes que coinciden entre ARCA y Odoo.' }
+];
+const count = id => ({ faltantes: R.faltantes.length, diferencias: R.matches.filter(m => m.difImporte).length, revisar: R.revisar.length, observaciones: R.matches.filter(m => m.obs.length).length, proveedores: R.proveedores.length, noaplica: R.noAplica.length, conciliados: R.matches.length })[id];
+
+function render() {
+  $('results').classList.remove('hidden');
+  $('periodo').textContent = `ARCA: ${R.nA} comprobantes del ${fmtFecha(R.minA)} al ${fmtFecha(R.maxA)} · Odoo: ${R.nO} comprobantes`;
+  $('tabs').innerHTML = TABS.map(t => `<button class="tab ${t.cls}" role="tab" data-t="${t.id}" aria-selected="${t.id === tabActual}"><b>${count(t.id)}</b>${t.label}</button>`).join('');
+  $('tabs').querySelectorAll('.tab').forEach(b => b.addEventListener('click', () => { tabActual = b.dataset.t; render(); }));
+  const t = TABS.find(x => x.id === tabActual); $('desc').textContent = t.desc;
+  drawTable();
+}
+$('q').addEventListener('input', () => R && drawTable());
+
+function rowsFor(id) {
+  const obsTxt = a => a.length ? `<div class="obs">${a.map(esc).join('<br>')}</div>` : '';
+  switch (id) {
+    case 'faltantes': return { cols: ['Fecha', 'Tipo', 'Comprobante', 'CUIT', 'Proveedor', 'Total', 'Observación'], num: [5], rows: R.faltantes.map(({ a, obs }) => [fmtFecha(a.fecha), esc(a.tipo), comp(a.pv, a.nro), fmtCuit(a.cuit), esc(a.emisor), fmt(a.total, a.moneda), obsTxt(obs)]) };
+    case 'diferencias': return { cols: ['Comprobante Odoo', 'Proveedor', 'Total ARCA', 'Total Odoo', 'Diferencia'], num: [2, 3, 4], rows: R.matches.filter(m => m.difImporte).map(m => [esc(m.o.numero), esc(m.a.emisor), fmt(m.a.total, m.a.moneda), fmt(m.o.total, m.o.moneda || m.a.moneda), fmt(m.dif, m.a.moneda)]) };
+    case 'revisar': return { cols: ['Número', 'Tipo', 'Proveedor', 'CUIT', 'Fecha', 'Total', 'Estado', 'Observación'], num: [5], rows: R.revisar.map(({ o, obs }) => [esc(o.numero), esc(o.tipoDoc), esc(o.nombre), fmtCuit(o.cuit), fmtFecha(o.fecha), fmt(o.total, o.moneda), esc([o.estado, o.estadoPago].filter(Boolean).join(' / ')), obsTxt(obs)]) };
+    case 'observaciones': return { cols: ['Comprobante Odoo', 'Proveedor', 'Total', 'Cruce', 'Observación'], num: [2], rows: R.matches.filter(m => m.obs.length).map(m => [esc(m.o.numero), esc(m.a.emisor), fmt(m.a.total, m.a.moneda), `<span class="badge ${m.nivel === 'Exacto' ? '' : 'w'}">${m.nivel}</span>`, obsTxt(m.obs)]) };
+    case 'proveedores': return { cols: ['Proveedor', 'CUIT', 'En ARCA', 'En Odoo', 'Conciliados', 'Faltan en Odoo', 'Importe faltante', 'Revisar'], num: [2, 3, 4, 5, 6, 7], rows: R.proveedores.map(p => [esc(p.nombre), fmtCuit(p.cuit), p.nA, p.nO, p.nConc, p.nFalt, Object.entries(p.totFalt).map(([m, v]) => fmt(v, m)).join('<br>'), p.nRev + p.nDif]) };
+    case 'noaplica': return { cols: ['Número', 'Proveedor', 'Fecha', 'Total', 'Motivo'], num: [3], rows: R.noAplica.map(({ o, motivo }) => [esc(o.numero), esc(o.nombre), fmtFecha(o.fecha), fmt(o.total, o.moneda), esc(motivo)]) };
+    case 'conciliados': return { cols: ['Comprobante Odoo', 'Tipo ARCA', 'Proveedor', 'Fecha ARCA', 'Total', 'Cruce'], num: [4], rows: R.matches.map(m => [esc(m.o.numero), esc(m.a.tipo), esc(m.a.emisor), fmtFecha(m.a.fecha), fmt(m.a.total, m.a.moneda), `<span class="badge ${m.nivel === 'Exacto' ? '' : 'w'}">${m.nivel}</span>`]) };
+  }
+}
+const WRAP = ['Proveedor', 'Observación', 'Motivo'];
+function drawTable() {
+  const { cols, num, rows } = rowsFor(tabActual);
+  const q = $('q').value.trim().toLowerCase(), qd = q.replace(/\D/g, '');
+  const vis = rows.filter(r => !q || r.join(' ').toLowerCase().includes(q) || (qd.length > 3 && r.join(' ').replace(/\D/g, '').includes(qd)));
+  $('tbl').innerHTML = `<thead><tr>${cols.map((c, i) => `<th${num.includes(i) ? ' style="text-align:right"' : ''}>${c}</th>`).join('')}</tr></thead><tbody>${vis.length ? vis.map(r => `<tr>${r.map((c, i) => `<td class="${num.includes(i) ? 'n' : (WRAP.includes(cols[i]) ? 'w' : '')}">${c}</td>`).join('')}</tr>`).join('') : `<tr><td class="empty" colspan="${cols.length}">${rows.length ? 'Nada coincide con la búsqueda.' : 'No hay comprobantes en esta categoría.'}</td></tr>`}</tbody>`;
+}
+
+// ===== Excel =====
+function buildWorkbook() {
+  const wb = XLSX.utils.book_new();
+  const add = (name, data, widths) => {
+    const ws = XLSX.utils.json_to_sheet(data.length ? data : [{ '': 'Sin comprobantes' }]);
+    const ref = XLSX.utils.decode_range(ws['!ref']);
+    for (let r = 1; r <= ref.e.r; r++) for (let c = 0; c <= ref.e.c; c++) { const cell = ws[XLSX.utils.encode_cell({ r, c })]; if (cell && cell.t === 'n' && !Number.isInteger(cell.v)) cell.z = '#,##0.00'; else if (cell && cell.t === 'n' && Math.abs(cell.v) >= 1000) cell.z = '#,##0.00'; }
+    ws['!cols'] = widths.map(w => ({ wch: w }));
+    if (data.length) ws['!autofilter'] = { ref: ws['!ref'] };
+    XLSX.utils.book_append_sheet(wb, ws, name);
+  };
+  const obs = a => a.join(' | ');
+  add('Resumen', [
+    { 'Concepto': 'Comprobantes en ARCA', 'Cantidad': R.nA },
+    { 'Concepto': 'Comprobantes en Odoo', 'Cantidad': R.nO },
+    { 'Concepto': 'Conciliados', 'Cantidad': R.matches.length },
+    { 'Concepto': 'Faltan en Odoo', 'Cantidad': R.faltantes.length },
+    { 'Concepto': 'Diferencias de importe', 'Cantidad': count('diferencias') },
+    { 'Concepto': 'En Odoo, no en ARCA', 'Cantidad': R.revisar.length },
+    { 'Concepto': 'Conciliados con observaciones', 'Cantidad': count('observaciones') },
+    { 'Concepto': 'No informados en ARCA', 'Cantidad': R.noAplica.length },
+    { 'Concepto': 'Período ARCA', 'Cantidad': `${fmtFecha(R.minA)} al ${fmtFecha(R.maxA)}` }
+  ], [32, 26]);
+  add('Faltan en Odoo', R.faltantes.map(({ a, obs: o }) => ({ 'Fecha': fmtFecha(a.fecha), 'Tipo': a.tipo, 'Punto de venta': a.pv, 'Número': a.nro, 'Comprobante': comp(a.pv, a.nro), 'CUIT': a.cuit, 'Proveedor': a.emisor, 'Moneda': a.moneda, 'Tipo de cambio': a.tc, 'Neto gravado': a.neto, 'IVA': a.iva, 'Total': a.total, 'Cód. autorización': a.cae, 'Observación': obs(o) })), [11, 22, 8, 10, 16, 13, 40, 8, 10, 14, 13, 14, 16, 40]);
+  add('Diferencias', R.matches.filter(m => m.difImporte).map(m => ({ 'Comprobante Odoo': m.o.numero, 'CUIT': m.a.cuit, 'Proveedor': m.a.emisor, 'Moneda': m.a.moneda, 'Total ARCA': m.a.total, 'Total Odoo': m.o.total, 'Diferencia': m.dif, 'Neto ARCA': m.a.neto, 'Neto Odoo': m.o.neto })), [20, 13, 40, 8, 14, 14, 12, 14, 14]);
+  add('En Odoo no en ARCA', R.revisar.map(({ o, obs: x }) => ({ 'Número': o.numero, 'Tipo de documento': o.tipoDoc, 'CUIT': o.cuit, 'Proveedor': o.nombre, 'Fecha': fmtFecha(o.fecha), 'Moneda': o.moneda, 'Total': o.total, 'Estado': o.estado, 'Estado en pago': o.estadoPago, 'Referencia': o.ref, 'Observación': obs(x) })), [20, 24, 13, 40, 11, 8, 14, 12, 14, 30, 40]);
+  add('Con observaciones', R.matches.filter(m => m.obs.length).map(m => ({ 'Comprobante Odoo': m.o.numero, 'Tipo ARCA': m.a.tipo, 'Comprobante ARCA': comp(m.a.pv, m.a.nro), 'CUIT ARCA': m.a.cuit, 'CUIT Odoo': m.o.cuit, 'Proveedor': m.a.emisor, 'Total': m.a.total, 'Cruce': m.nivel, 'Observación': obs(m.obs) })), [20, 22, 16, 13, 13, 40, 14, 10, 50]);
+  add('Por proveedor', R.proveedores.map(p => ({ 'Proveedor': p.nombre, 'CUIT': p.cuit, 'En ARCA': p.nA, 'En Odoo': p.nO, 'Conciliados': p.nConc, 'Faltan en Odoo': p.nFalt, 'Faltante ARS': p.totFalt.ARS || 0, 'Faltante USD': p.totFalt.USD || 0, 'Diferencias': p.nDif, 'En Odoo no en ARCA': p.nRev })), [40, 13, 9, 9, 11, 13, 14, 12, 11, 16]);
+  add('No informados en ARCA', R.noAplica.map(({ o, motivo }) => ({ 'Número': o.numero, 'Tipo de documento': o.tipoDoc, 'Proveedor': o.nombre, 'Fecha': fmtFecha(o.fecha), 'Moneda': o.moneda, 'Total': o.total, 'Referencia': o.ref, 'Motivo': motivo })), [20, 30, 36, 11, 8, 14, 34, 40]);
+  add('Conciliados', R.matches.map(m => ({ 'Comprobante Odoo': m.o.numero, 'Tipo ARCA': m.a.tipo, 'Comprobante ARCA': comp(m.a.pv, m.a.nro), 'CUIT': m.a.cuit, 'Proveedor': m.a.emisor, 'Fecha ARCA': fmtFecha(m.a.fecha), 'Fecha Odoo': fmtFecha(m.o.fecha), 'Moneda': m.a.moneda, 'Total ARCA': m.a.total, 'Total Odoo': m.o.total, 'Estado Odoo': m.o.estadoPago || m.o.estado, 'Cruce': m.nivel })), [20, 22, 16, 13, 40, 11, 11, 8, 14, 14, 14, 10]);
+  return wb;
+}
+
+async function getDownloads() {
+  if (!(window.claude && typeof window.claude.use === 'function')) return null;
+  try { return await Promise.race([window.claude.use('downloads'), new Promise(r => setTimeout(() => r(null), 3000))]); } catch (e) { return null; }
+}
+$('dl').addEventListener('click', async () => {
+  if (!R) return;
+  const btn = $('dl'); btn.disabled = true;
+  $('err').textContent = '';
+  try {
+    const wb = buildWorkbook();
+    const filename = `Control comprobantes recibidos Comandarina ${(R.maxA || '').slice(0, 7)}.xlsx`;
+    const downloads = await getDownloads();
+    if (downloads) {
+      const data = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+      try { await downloads.save({ filename, data: new Blob([data]) }); }
+      catch (e) { if (e && e.code !== 'declined') $('err').textContent = 'No se pudo descargar el Excel en esta vista (' + (e.code || 'error') + ').'; }
+    } else {
+      XLSX.writeFile(wb, filename);
+    }
+  } catch (e) {
+    $('err').textContent = 'No se pudo generar el Excel: ' + e.message;
+  } finally { btn.disabled = false; }
+});
+</script>
+</body>
+</html>
