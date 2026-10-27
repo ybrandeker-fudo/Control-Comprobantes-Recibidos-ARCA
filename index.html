@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@300;400;600;700;800;900&display=swap" rel="stylesheet">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
 <style>
 :root{
   --bg-1:#FFFFFF; --bg-3:#F1F1F1; --surface:#FFFFFF; --fg-1:#1F1F1F; --fg-2:#3B3B3B; --fg-3:#6A6A6A;
@@ -43,8 +43,10 @@ header h1{font-size:2.5rem;line-height:1.1;margin:0 0 8px;font-weight:900;letter
 header p{margin:0;color:var(--fg-2);max-width:64ch;font-size:1.0625rem}
 .empresa{margin:0 0 12px;font-weight:700;color:var(--fg-1);font-size:1.0625rem}
 .empresa span{color:var(--fg-3);font-weight:400;margin-left:8px}
-.slots{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin:40px 0 24px}
+.slots{display:grid;grid-template-columns:repeat(3,1fr);gap:24px;margin:40px 0 24px}
+@media (max-width:1000px){.slots{grid-template-columns:1fr 1fr}}
 @media (max-width:760px){.slots{grid-template-columns:1fr} header h1{font-size:2rem}}
+.opt{display:inline-block;margin-left:8px;font-size:.75rem;font-weight:600;color:var(--fg-3);border:1px solid var(--border-2);border-radius:999px;padding:1px 8px;vertical-align:middle}
 .slot{position:relative;background:var(--surface);border:1.5px dashed var(--border-2);border-radius:16px;padding:24px;cursor:pointer;transition:border-color 180ms ease-out}
 .slot:hover,.slot.drag{border-color:var(--brand)}
 .slot:focus-within{outline:2px solid var(--brand);outline-offset:2px}
@@ -118,8 +120,14 @@ tr:last-child td{border-bottom:none}
   <label class="slot" id="slotO">
     <input type="file" id="fileO" accept=".xlsx,.xls,.csv">
     <h2>Odoo: facturas de proveedor</h2>
-    <p class="hint">Export de account.move con CUIT, tipo de documento y moneda, incluyendo notas de crédito.</p>
+    <p class="hint">Export de account.move con CUIT, tipo de documento y moneda.</p>
     <div class="file" id="nameO"></div>
+  </label>
+  <label class="slot" id="slotN">
+    <input type="file" id="fileN" accept=".xlsx,.xls,.csv">
+    <h2>Odoo: notas de crédito<span class="opt">Opcional</span></h2>
+    <p class="hint">Export de reembolsos de proveedor, con las mismas columnas que el de facturas.</p>
+    <div class="file" id="nameN"></div>
   </label>
 </section>
 <div class="actions">
@@ -361,7 +369,7 @@ function cruzar(A, O) {
 
 // ===== Interfaz =====
 const $ = id => document.getElementById(id);
-const files = { A: null, O: null };
+const files = { A: null, O: null, N: null };
 let R = null, tabActual = 'faltantes';
 const fmt = (n, mon) => (mon && mon !== 'ARS' ? mon + ' ' : '$ ') + Number(n || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fmtCuit = c => c && c.length === 11 ? `${c.slice(0, 2)}-${c.slice(2, 10)}-${c.slice(10)}` : (c || '');
@@ -378,7 +386,7 @@ function setFile(key, f) {
   files[key] = f; $('name' + key).textContent = f.name; $('slot' + key).classList.add('loaded');
   $('run').disabled = !(files.A && files.O);
 }
-bindSlot('A'); bindSlot('O');
+bindSlot('A'); bindSlot('O'); bindSlot('N');
 
 const leer = f => new Promise((res, rej) => {
   const r = new FileReader();
@@ -390,17 +398,25 @@ const leer = f => new Promise((res, rej) => {
 $('run').addEventListener('click', async () => {
   $('err').textContent = ''; $('warn').textContent = '';
   try {
-    const [ra, ro] = await Promise.all([leer(files.A), leer(files.O)]);
+    const [ra, ro, rn] = await Promise.all([leer(files.A), leer(files.O), files.N ? leer(files.N) : Promise.resolve(null)]);
     let A, O;
     try { A = parseARCA(ra, XLSX.SSF); } catch (e) {
       try { parseARCA(ro, XLSX.SSF); throw new Error('Parece que cargaste los archivos al revés: el de ARCA va a la izquierda.'); } catch (e2) { throw e2.message.includes('al revés') ? e2 : e; }
     }
     O = parseOdoo(ro, XLSX.SSF);
     const avisos = [];
+    if (rn) {
+      let N;
+      try { N = parseOdoo(rn, XLSX.SSF); } catch (e) { throw new Error('Archivo de notas de crédito: ' + e.message); }
+      N.rows.forEach(r => { r.id = 'N' + r.id; });
+      const noNC = N.rows.filter(r => !(r.code && /nota.*cr[eé]dito/i.test(r.tipoDoc))).length;
+      if (noNC) avisos.push(`El archivo de notas de crédito trae ${noNC} comprobante(s) que no son NC. ¿Cargaste el de facturas en ese recuadro?`);
+      O.rows = O.rows.concat(N.rows);
+    }
     const otros = A.receptores.filter(c => c && c !== CUIT_EMPRESA);
     if (otros.length) avisos.push(`El archivo de ARCA es del CUIT ${otros.map(fmtCuit).join(', ')}, no de Comandarina (${fmtCuit(CUIT_EMPRESA)}). Revisá que sea el export correcto.`);
     if (O.faltanColumnas.length) avisos.push('Al export de Odoo le faltan columnas: ' + O.faltanColumnas.join(', ') + '. El cruce va a ser menos preciso.');
-    if (!O.rows.some(o => /nota.*cr[eé]dito/i.test(o.tipoDoc))) avisos.push('El export de Odoo no trae notas de crédito: las NC de ARCA van a aparecer como faltantes.');
+    if (!files.N && !O.rows.some(o => o.code && /nota.*cr[eé]dito/i.test(o.tipoDoc))) avisos.push('No cargaste el archivo de notas de crédito: las NC de ARCA van a aparecer como faltantes.');
     $('warn').textContent = avisos.join(' ');
     R = cruzar(A.rows, O.rows); R.nA = A.rows.length; R.nO = O.rows.length;
     render();
@@ -451,33 +467,48 @@ function drawTable() {
 // ===== Excel =====
 function buildWorkbook() {
   const wb = XLSX.utils.book_new();
-  const add = (name, data, widths) => {
+  const MONEY = '#,##0.00';
+  const add = (name, data, widths, opts = {}) => {
+    const money = opts.money || [], ints = opts.ints || [], bold = opts.bold || [];
     const ws = XLSX.utils.json_to_sheet(data.length ? data : [{ '': 'Sin comprobantes' }]);
     const ref = XLSX.utils.decode_range(ws['!ref']);
-    for (let r = 1; r <= ref.e.r; r++) for (let c = 0; c <= ref.e.c; c++) { const cell = ws[XLSX.utils.encode_cell({ r, c })]; if (cell && cell.t === 'n' && !Number.isInteger(cell.v)) cell.z = '#,##0.00'; else if (cell && cell.t === 'n' && Math.abs(cell.v) >= 1000) cell.z = '#,##0.00'; }
+    const heads = [];
+    for (let c = 0; c <= ref.e.c; c++) {
+      const h = ws[XLSX.utils.encode_cell({ r: 0, c })]; heads[c] = h ? h.v : '';
+      if (h) h.s = { font: { bold: true }, fill: { fgColor: { rgb: 'F1F1F1' } }, border: { bottom: { style: 'thin', color: { rgb: 'C6C6C6' } } } };
+    }
+    for (let r = 1; r <= ref.e.r; r++) for (let c = 0; c <= ref.e.c; c++) {
+      const cell = ws[XLSX.utils.encode_cell({ r, c })]; if (!cell) continue;
+      const h = heads[c], st = {};
+      if (cell.t === 'n' && ints.includes(h)) { cell.z = '0'; st.numFmt = '0'; }
+      else if (cell.t === 'n' && money.includes(h)) { cell.z = MONEY; st.numFmt = MONEY; }
+      if (bold.includes(h)) st.font = { bold: true };
+      if (Object.keys(st).length) cell.s = st;
+    }
     ws['!cols'] = widths.map(w => ({ wch: w }));
     if (data.length) ws['!autofilter'] = { ref: ws['!ref'] };
     XLSX.utils.book_append_sheet(wb, ws, name);
   };
   const obs = a => a.join(' | ');
+  add('Faltan en Odoo', R.faltantes.map(({ a, obs: o }) => ({ 'Fecha': fmtFecha(a.fecha), 'Tipo': a.tipo, 'Punto de venta': a.pv, 'Número': a.nro, 'Comprobante': comp(a.pv, a.nro), 'CUIT': a.cuit, 'Proveedor': a.emisor, 'Moneda': a.moneda, 'Tipo de cambio': a.tc, 'Neto gravado': a.neto, 'IVA': a.iva, 'Total': a.total, 'Cód. autorización': a.cae, 'Observación': obs(o) })),
+    [11, 22, 13, 11, 16, 13, 40, 8, 13, 14, 13, 15, 16, 40], { ints: ['Punto de venta', 'Número'], money: ['Tipo de cambio', 'Neto gravado', 'IVA', 'Total'], bold: ['Total'] });
+  const difs = R.matches.filter(m => m.difImporte);
+  if (difs.length) add('Diferencias', difs.map(m => ({ 'Comprobante Odoo': m.o.numero, 'CUIT': m.a.cuit, 'Proveedor': m.a.emisor, 'Moneda': m.a.moneda, 'Neto ARCA': m.a.neto, 'Neto Odoo': m.o.neto, 'Total ARCA': m.a.total, 'Total Odoo': m.o.total, 'Diferencia': m.dif })),
+    [20, 13, 40, 8, 14, 14, 15, 15, 13], { money: ['Neto ARCA', 'Neto Odoo', 'Total ARCA', 'Total Odoo', 'Diferencia'], bold: ['Total ARCA', 'Total Odoo', 'Diferencia'] });
+  const conObs = R.matches.filter(m => m.obs.length);
+  if (conObs.length) add('Con observaciones', conObs.map(m => ({ 'Comprobante Odoo': m.o.numero, 'Tipo ARCA': m.a.tipo, 'Comprobante ARCA': comp(m.a.pv, m.a.nro), 'CUIT ARCA': m.a.cuit, 'CUIT Odoo': m.o.cuit, 'Proveedor': m.a.emisor, 'Cruce': m.nivel, 'Observación': obs(m.obs), 'Total': m.a.total })),
+    [20, 22, 16, 13, 13, 40, 10, 50, 15], { money: ['Total'], bold: ['Total'] });
   add('Resumen', [
     { 'Concepto': 'Comprobantes en ARCA', 'Cantidad': R.nA },
     { 'Concepto': 'Comprobantes en Odoo', 'Cantidad': R.nO },
     { 'Concepto': 'Conciliados', 'Cantidad': R.matches.length },
     { 'Concepto': 'Faltan en Odoo', 'Cantidad': R.faltantes.length },
-    { 'Concepto': 'Diferencias de importe', 'Cantidad': count('diferencias') },
+    { 'Concepto': 'Diferencias de importe', 'Cantidad': difs.length },
+    { 'Concepto': 'Conciliados con observaciones', 'Cantidad': conObs.length },
     { 'Concepto': 'En Odoo, no en ARCA', 'Cantidad': R.revisar.length },
-    { 'Concepto': 'Conciliados con observaciones', 'Cantidad': count('observaciones') },
     { 'Concepto': 'No informados en ARCA', 'Cantidad': R.noAplica.length },
     { 'Concepto': 'Período ARCA', 'Cantidad': `${fmtFecha(R.minA)} al ${fmtFecha(R.maxA)}` }
-  ], [32, 26]);
-  add('Faltan en Odoo', R.faltantes.map(({ a, obs: o }) => ({ 'Fecha': fmtFecha(a.fecha), 'Tipo': a.tipo, 'Punto de venta': a.pv, 'Número': a.nro, 'Comprobante': comp(a.pv, a.nro), 'CUIT': a.cuit, 'Proveedor': a.emisor, 'Moneda': a.moneda, 'Tipo de cambio': a.tc, 'Neto gravado': a.neto, 'IVA': a.iva, 'Total': a.total, 'Cód. autorización': a.cae, 'Observación': obs(o) })), [11, 22, 8, 10, 16, 13, 40, 8, 10, 14, 13, 14, 16, 40]);
-  add('Diferencias', R.matches.filter(m => m.difImporte).map(m => ({ 'Comprobante Odoo': m.o.numero, 'CUIT': m.a.cuit, 'Proveedor': m.a.emisor, 'Moneda': m.a.moneda, 'Total ARCA': m.a.total, 'Total Odoo': m.o.total, 'Diferencia': m.dif, 'Neto ARCA': m.a.neto, 'Neto Odoo': m.o.neto })), [20, 13, 40, 8, 14, 14, 12, 14, 14]);
-  add('En Odoo no en ARCA', R.revisar.map(({ o, obs: x }) => ({ 'Número': o.numero, 'Tipo de documento': o.tipoDoc, 'CUIT': o.cuit, 'Proveedor': o.nombre, 'Fecha': fmtFecha(o.fecha), 'Moneda': o.moneda, 'Total': o.total, 'Estado': o.estado, 'Estado en pago': o.estadoPago, 'Referencia': o.ref, 'Observación': obs(x) })), [20, 24, 13, 40, 11, 8, 14, 12, 14, 30, 40]);
-  add('Con observaciones', R.matches.filter(m => m.obs.length).map(m => ({ 'Comprobante Odoo': m.o.numero, 'Tipo ARCA': m.a.tipo, 'Comprobante ARCA': comp(m.a.pv, m.a.nro), 'CUIT ARCA': m.a.cuit, 'CUIT Odoo': m.o.cuit, 'Proveedor': m.a.emisor, 'Total': m.a.total, 'Cruce': m.nivel, 'Observación': obs(m.obs) })), [20, 22, 16, 13, 13, 40, 14, 10, 50]);
-  add('Por proveedor', R.proveedores.map(p => ({ 'Proveedor': p.nombre, 'CUIT': p.cuit, 'En ARCA': p.nA, 'En Odoo': p.nO, 'Conciliados': p.nConc, 'Faltan en Odoo': p.nFalt, 'Faltante ARS': p.totFalt.ARS || 0, 'Faltante USD': p.totFalt.USD || 0, 'Diferencias': p.nDif, 'En Odoo no en ARCA': p.nRev })), [40, 13, 9, 9, 11, 13, 14, 12, 11, 16]);
-  add('No informados en ARCA', R.noAplica.map(({ o, motivo }) => ({ 'Número': o.numero, 'Tipo de documento': o.tipoDoc, 'Proveedor': o.nombre, 'Fecha': fmtFecha(o.fecha), 'Moneda': o.moneda, 'Total': o.total, 'Referencia': o.ref, 'Motivo': motivo })), [20, 30, 36, 11, 8, 14, 34, 40]);
-  add('Conciliados', R.matches.map(m => ({ 'Comprobante Odoo': m.o.numero, 'Tipo ARCA': m.a.tipo, 'Comprobante ARCA': comp(m.a.pv, m.a.nro), 'CUIT': m.a.cuit, 'Proveedor': m.a.emisor, 'Fecha ARCA': fmtFecha(m.a.fecha), 'Fecha Odoo': fmtFecha(m.o.fecha), 'Moneda': m.a.moneda, 'Total ARCA': m.a.total, 'Total Odoo': m.o.total, 'Estado Odoo': m.o.estadoPago || m.o.estado, 'Cruce': m.nivel })), [20, 22, 16, 13, 40, 11, 11, 8, 14, 14, 14, 10]);
+  ], [32, 26], { ints: ['Cantidad'] });
   return wb;
 }
 
